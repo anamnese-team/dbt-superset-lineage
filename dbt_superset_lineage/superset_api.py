@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class Superset:
     """A class for accessing the Superset API in an easy way."""
 
-    def __init__(self, api_url, access_token=None, refresh_token=None):
+    def __init__(self, api_url, access_token=None, refresh_token=None, csrf_token=None):
         """Instantiates the class.
 
         If ``access_token`` is None, attempts to obtain it using ``refresh_token``.
@@ -24,9 +24,13 @@ class Superset:
         self.api_url = api_url
         self.access_token = access_token
         self.refresh_token = refresh_token
+        self.csrf_token = csrf_token
 
         if self.access_token is None:
             self._refresh_access_token()
+
+        if self.csrf_token is None:
+            self._get_csrf_token()
 
     def _headers(self, **headers):
         if self.access_token is None:
@@ -34,8 +38,20 @@ class Superset:
 
         return {
             'Authorization': f'Bearer {self.access_token}',
+            'X-CSRFToken': self.csrf_token,
             **headers,
         }
+
+    def _get_csrf_token(self):
+        logger.debug("Getting the CSRF token")
+
+        res = self.request('POST', '/security/csrf_token',
+                           headers={'Authorization': f'Bearer {self.refresh_token}'},
+                           refresh_token_if_needed=True)
+        self.csrf_token = res['result']
+
+        logger.debug("CSRF token fetched successfully")
+        return True
 
     def _refresh_access_token(self):
         logger.debug("Refreshing API token")
