@@ -235,7 +235,8 @@ def put_descriptions_to_superset(superset, dataset, superset_pause_after_update)
     columns_old = [{
         'column_name': col['column_name'],
         'id': col['id'],
-        'description': col['description']
+        'description': col['description'],
+        'verbose_name': col['verbose_name']
     } for col in dataset['columns']]
 
     if description_new != description_old or \
