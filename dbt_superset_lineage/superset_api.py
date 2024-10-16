@@ -45,8 +45,8 @@ class Superset:
     def _get_csrf_token(self):
         logger.debug("Getting the CSRF token")
 
-        res = self.request('POST', '/security/csrf_token',
-                           headers={'Authorization': f'Bearer {self.refresh_token}'},
+        res = self.request('GET', '/security/csrf_token',
+                           headers={'Authorization': f'Bearer {self.access_token}'},
                            refresh_token_if_needed=True)
         self.csrf_token = res['result']
 
