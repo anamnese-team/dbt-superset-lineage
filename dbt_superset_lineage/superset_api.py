@@ -25,6 +25,7 @@ class Superset:
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.csrf_token = csrf_token
+        self.cookies = {}
 
         if self.access_token is None:
             self._refresh_access_token()
@@ -94,7 +95,7 @@ class Superset:
             headers = {}
 
         url = self.api_url + endpoint
-        res = requests.request(method, url, headers=self._headers(**headers), **request_kwargs)
+        res = requests.request(method, url, headers=self._headers(**headers), cookies=self.cookies, **request_kwargs)
 
         logger.debug("Request finished with status: %d", res.status_code)
 
@@ -104,5 +105,7 @@ class Superset:
             res = requests.request(method, url, headers=self._headers(**headers))
             logger.debug("Request finished with status: %d", res.status_code)
 
+        if res.cookies:
+            self.cookies = res.cookies.get_dict()
         res.raise_for_status()
         return res.json()
