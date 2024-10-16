@@ -39,6 +39,7 @@ class Superset:
 
         return {
             'Authorization': f'Bearer {self.access_token}',
+            'Referer': f'{self.api_url}/security/csrf_token',
             'X-CSRFToken': self.csrf_token,
             **headers,
         }
