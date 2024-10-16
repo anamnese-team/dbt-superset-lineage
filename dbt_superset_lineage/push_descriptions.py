@@ -97,6 +97,12 @@ def get_tables_from_dbt(dbt_manifest, dbt_db_name):
     return tables
 
 
+def add_certifications_in_superset(superset, dataset_id):
+    logging.info("Refreshing columns in Superset.")
+    body = {"extra": "{\"certification\": \n  {\"certified_by\": \"Équipe Tech\", \n   \"details\": \"Cette table est la source de vérité.\" \n    \n  }\n}"}
+    superset.request('PUT', f'/dataset/{dataset_id}',json=body)
+
+
 def refresh_columns_in_superset(superset, dataset_id):
     logging.info("Refreshing columns in Superset.")
     superset.request('PUT', f'/dataset/{dataset_id}/refresh')
@@ -166,16 +172,29 @@ def merge_columns_info(dataset, tables):
             'id': sst_column['id']
         }
 
-        # add column descriptions
-        if column_name in dbt_columns \
-                and 'description' in dbt_columns[column_name] \
-                and (sst_column['expression'] is None  # database columns
-                     or sst_column['expression'] == ''):
-            description = dbt_columns[column_name]['description']
-            description = convert_markdown_to_plain_text(description)
-        else:
-            description = sst_column['description']
-        column_new['description'] = description
+        # add column descriptions and labels
+        if column_name in dbt_columns:
+            if (
+                'description' in dbt_columns[column_name]
+                and (sst_column['expression'] is None or sst_column['expression'] == '')
+            ):
+                description = dbt_columns[column_name]['description']
+                description = convert_markdown_to_plain_text(description)
+            else:
+                description = sst_column['description']
+
+            column_new['description'] = description
+
+            if (
+                'meta' in dbt_columns[column_name]
+                and 'label' in dbt_columns[column_name]['meta']
+            ):
+                label = dbt_columns[column_name]['meta']['label']
+                label = convert_markdown_to_plain_text(label)
+            else:
+                label = sst_column['verbose_name']
+
+            column_new['verbose_name'] = label
 
         columns_new.append(column_new)
 
@@ -261,6 +280,7 @@ def main(dbt_project_dir, dbt_db_name,
             if superset_refresh_columns:
                 refresh_columns_in_superset(superset, sst_dataset_id)
                 pause_after_update(superset_pause_after_update)
+            add_certifications_in_superset(superset, sst_dataset_id)
             sst_dataset_w_cols = add_superset_columns(superset, sst_dataset)
             sst_dataset_w_cols_new = merge_columns_info(sst_dataset_w_cols, dbt_tables)
             put_descriptions_to_superset(superset, sst_dataset_w_cols_new, superset_pause_after_update)
