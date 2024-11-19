@@ -74,7 +74,7 @@ def get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_name):
 
         for table_key_long in manifest_subset:
             table = manifest_subset[table_key_long]
-            name = table['name']
+            name = table['alias'] if table.get('alias') else table['name']
             schema = table['schema']
             database = table['database']
 
