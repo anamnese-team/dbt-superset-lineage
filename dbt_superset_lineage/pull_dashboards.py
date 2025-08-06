@@ -297,7 +297,7 @@ class YamlFormatted(ruamel.yaml.YAML):
         self.indent = 4
 
 
-def main(dbt_project_dir, exposures_path, dbt_db_name,
+def main(dbt_project_dir, manifest_path, exposures_path, dbt_db_name,
          superset_url, superset_db_id, sql_dialect,
          superset_access_token, superset_refresh_token):
 
@@ -312,7 +312,7 @@ def main(dbt_project_dir, exposures_path, dbt_db_name,
 
     logging.info("Starting the script!")
 
-    with open(f'{dbt_project_dir}/target/manifest.json') as f:
+    with open(manifest_path) as f:
         dbt_manifest = json.load(f)
 
     exposures_yaml_path = dbt_project_dir + exposures_path
@@ -350,6 +350,7 @@ def main(dbt_project_dir, exposures_path, dbt_db_name,
     }
 
     exposures_yaml_file = YamlFormatted()
+
     with open(exposures_yaml_path, 'w+', encoding='utf-8') as f:
         exposures_yaml_file.dump(exposures_yaml_schema, f)
 

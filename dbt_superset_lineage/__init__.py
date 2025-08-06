@@ -7,6 +7,7 @@ app = typer.Typer()
 
 @app.command()
 def pull_dashboards(dbt_project_dir: str = typer.Option('.', help="Directory path to dbt project."),
+                    manifest_path: str = typer.Option('.', help="Path to dbt manifest.json file."),
                     exposures_path: str = typer.Option('/models/exposures/superset_dashboards.yml',
                                                        help="Where within PROJECT_DIR the exposure file should "
                                                             "be stored. If you set this to go outside /models, it then "
@@ -27,13 +28,13 @@ def pull_dashboards(dbt_project_dir: str = typer.Option('.', help="Directory pat
                     superset_refresh_token: str = typer.Option(None, envvar="SUPERSET_REFRESH_TOKEN",
                                                                help="Refresh token to Superset API.")):
 
-    pull_dashboards_main(dbt_project_dir, exposures_path, dbt_db_name,
+    pull_dashboards_main(dbt_project_dir, manifest_path, exposures_path, dbt_db_name,
                          superset_url, superset_db_id, sql_dialect,
                          superset_access_token, superset_refresh_token)
 
 
 @app.command()
-def push_descriptions(dbt_project_dir: str = typer.Option('.', help="Directory path to dbt project."),
+def push_descriptions(manifest_path: str = typer.Option('.', help="Path to dbt manifest.json file."),
                       dbt_db_name: str = typer.Option(None, help="Name of your database within dbt to which the script "
                                                                  "should be reduced to run."),
                       dbt_schema_names: str = typer.Option(None, help="Comma-separated string of the database schemas within dbt to which the script "
@@ -57,7 +58,7 @@ def push_descriptions(dbt_project_dir: str = typer.Option('.', help="Directory p
                       superset_refresh_token: str = typer.Option(None, envvar="SUPERSET_REFRESH_TOKEN",
                                                                  help="Refresh token to Superset API.")):
 
-    push_descriptions_main(dbt_project_dir, dbt_db_name, dbt_schema_names,
+    push_descriptions_main(manifest_path, dbt_db_name, dbt_schema_names,
                            superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
                            superset_access_token, superset_refresh_token)
 

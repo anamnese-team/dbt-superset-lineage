@@ -249,7 +249,7 @@ def put_descriptions_to_superset(superset, dataset, superset_pause_after_update)
         logging.info("Skipping PUT execute request as nothing would be updated.")
 
 
-def main(dbt_project_dir, dbt_db_name, dbt_schema_names,
+def main(manifest_path, dbt_db_name, dbt_schema_names,
          superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
          superset_access_token, superset_refresh_token):
 
@@ -267,7 +267,7 @@ def main(dbt_project_dir, dbt_db_name, dbt_schema_names,
     sst_datasets = get_datasets_from_superset(superset, superset_db_id)
     logging.info("There are %d physical datasets in Superset overall.", len(sst_datasets))
 
-    with open(f'{dbt_project_dir}/target/manifest.json') as f:
+    with open(manifest_path) as f:
         dbt_manifest = json.load(f)
 
     dbt_tables = get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names)
