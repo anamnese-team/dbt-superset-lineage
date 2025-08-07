@@ -271,8 +271,6 @@ def main(manifest_path, dbt_db_name, dbt_schema_names,
         dbt_manifest = json.load(f)
 
     dbt_tables = get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names)
-    logging.info(dbt_tables)
-    logging.info("There are %d dbt_tables", len(dbt_tables))
 
     sst_datasets_dbt_filtered = [d for d in sst_datasets if d["key"] in dbt_tables]
     logging.info("There are %d physical datasets in Superset with a match in dbt.", len(sst_datasets_dbt_filtered))
