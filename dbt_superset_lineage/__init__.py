@@ -34,7 +34,7 @@ def pull_dashboards(dbt_project_dir: str = typer.Option('.', help="Directory pat
 
 
 @app.command()
-def push_descriptions(manifest_path: str = typer.Option('.', help="Path to dbt manifest.json file."),
+def push_descriptions(manifest_source: str = typer.Option('.', help="Local path or S3 url to dbt manifest"),
                       dbt_db_name: str = typer.Option(None, help="Name of your database within dbt to which the script "
                                                                  "should be reduced to run."),
                       dbt_schema_names: str = typer.Option(None, help="Comma-separated string of the database schemas within dbt to which the script "
@@ -56,11 +56,15 @@ def push_descriptions(manifest_path: str = typer.Option('.', help="Path to dbt m
                                                                      "Can be automatically generated if "
                                                                      "SUPERSET_REFRESH_TOKEN is provided."),
                       superset_refresh_token: str = typer.Option(None, envvar="SUPERSET_REFRESH_TOKEN",
-                                                                 help="Refresh token to Superset API.")):
+                                                                 help="Refresh token to Superset API."),
+                      aws_access_key_id: str = typer.Option(None, help="S3 access key ID to access manifest"),
+                      aws_secret_access_key: str = typer.Option(None, help="S3 access key secret to access manifest"),
+                      aws_region: str = typer.Option(None, help="S3 bucket region")):
 
-    push_descriptions_main(manifest_path, dbt_db_name, dbt_schema_names,
+    push_descriptions_main(manifest_source, dbt_db_name, dbt_schema_names,
                            superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
-                           superset_access_token, superset_refresh_token)
+                           superset_access_token, superset_refresh_token, aws_access_key_id, aws_secret_access_key,
+                           aws_region)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import time
+import boto3
+from botocore.exceptions import NoCredentialsError, ClientError
 
 from bs4 import BeautifulSoup
 from markdown import markdown
@@ -10,6 +12,102 @@ from requests import HTTPError
 from .superset_api import Superset
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+
+def load_dbt_manifest(manifest_source, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1'):
+    """
+    Load dbt manifest from either local file or S3.
+
+    Args:
+        manifest_source: Either a local file path or S3 URI (s3://bucket/path/to/manifest.json)
+        aws_access_key_id: AWS access key (optional if using IAM roles/environment variables)
+        aws_secret_access_key: AWS secret key (optional if using IAM roles/environment variables)
+        aws_region: AWS region (default: us-east-1)
+
+    Returns:
+        dict: Parsed dbt manifest
+    """
+    if manifest_source.startswith('s3://'):
+        logging.info(f"Loading dbt manifest from S3: {manifest_source}")
+        return load_manifest_from_s3(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region)
+    else:
+        logging.info(f"Loading dbt manifest from local file: {manifest_source}")
+        return load_manifest_from_file(manifest_source)
+
+
+def load_manifest_from_file(manifest_path):
+    """Load manifest from local file."""
+    with open(manifest_path) as f:
+        return json.load(f)
+
+
+def load_manifest_from_s3(s3_uri, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1'):
+    """
+    Load manifest from S3.
+
+    Args:
+        s3_uri: S3 URI in format s3://bucket/path/to/manifest.json
+        aws_access_key_id: AWS access key (optional)
+        aws_secret_access_key: AWS secret key (optional)
+        aws_region: AWS region
+
+    Returns:
+        dict: Parsed manifest JSON
+    """
+    # Parse S3 URI
+    if not s3_uri.startswith('s3://'):
+        raise ValueError("S3 URI must start with 's3://'")
+
+    # Remove s3:// prefix and split bucket and key
+    s3_path = s3_uri[5:]  # Remove 's3://'
+    bucket_name, object_key = s3_path.split('/', 1)
+
+    try:
+        # Initialize S3 client
+        if aws_access_key_id and aws_secret_access_key:
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                region_name=aws_region
+            )
+        else:
+            # Use default credential chain (IAM roles, environment variables, etc.)
+            s3_client = boto3.client('s3', region_name=aws_region)
+
+        logging.info(f"Downloading manifest from bucket: {bucket_name}, key: {object_key}")
+
+        # Download the object
+        response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
+        manifest_content = response['Body'].read().decode('utf-8')
+
+        # Parse JSON
+        manifest = json.loads(manifest_content)
+        logging.info("Successfully loaded manifest from S3")
+
+        return manifest
+
+    except NoCredentialsError:
+        logging.error("AWS credentials not found. Please provide credentials via environment variables, "
+                      "IAM roles, or pass aws_access_key_id/aws_secret_access_key parameters.")
+        raise
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchBucket':
+            logging.error(f"S3 bucket '{bucket_name}' does not exist.")
+        elif error_code == 'NoSuchKey':
+            logging.error(f"Object '{object_key}' does not exist in bucket '{bucket_name}'.")
+        elif error_code == 'AccessDenied':
+            logging.error(f"Access denied to S3 object '{s3_uri}'. Check your permissions.")
+        else:
+            logging.error(f"Error accessing S3: {e}")
+        raise
+    except json.JSONDecodeError as e:
+        logging.error(f"Invalid JSON in manifest file: {e}")
+        raise
+    except Exception as e:
+        logging.error(f"Unexpected error loading manifest from S3: {e}")
+        raise
 
 
 def get_datasets_from_superset(superset, superset_db_id):
@@ -249,9 +347,10 @@ def put_descriptions_to_superset(superset, dataset, superset_pause_after_update)
         logging.info("Skipping PUT execute request as nothing would be updated.")
 
 
-def main(manifest_path, dbt_db_name, dbt_schema_names,
+def main(manifest_source, dbt_db_name, dbt_schema_names,
          superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
-         superset_access_token, superset_refresh_token):
+         superset_access_token, superset_refresh_token,
+         aws_access_key_id=None, aws_secret_access_key=None, aws_region='eu-west-3'):
 
     # require at least one token for Superset
     assert superset_access_token is not None or superset_refresh_token is not None, \
@@ -267,8 +366,8 @@ def main(manifest_path, dbt_db_name, dbt_schema_names,
     sst_datasets = get_datasets_from_superset(superset, superset_db_id)
     logging.info("There are %d physical datasets in Superset overall.", len(sst_datasets))
 
-    with open(manifest_path) as f:
-        dbt_manifest = json.load(f)
+    # Load manifest from either local file or S3
+    dbt_manifest = load_dbt_manifest(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region)
 
     dbt_tables = get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names)
 
