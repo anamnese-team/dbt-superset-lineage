@@ -83,7 +83,7 @@ def load_manifest_from_s3(s3_uri, aws_access_key_id=None, aws_secret_access_key=
 
         # Parse JSON
         manifest = json.loads(manifest_content)
-        logging.info(f"Successfully loaded manifest from S3: {manifest}")
+        logging.info(f"Successfully loaded manifest from S3.")
         return manifest
 
     except NoCredentialsError:
@@ -166,7 +166,6 @@ def get_datasets_from_superset(superset, superset_db_id):
 
 def get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names):
     tables = {}
-    logging.info(f"Getting tables from dbt usign manifest: {dbt_manifest}")
     for table_type in ['nodes', 'sources']:
         manifest_subset = dbt_manifest[table_type]
 
