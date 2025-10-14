@@ -395,7 +395,7 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
 
 
 def extract_metrics_from_manifest(dbt_manifest, schema, model_name):
-    """Extract metrics for a specific model from dbt manifest."""
+    """Extract metrics from model-level meta in the dbt manifest."""
     metrics = []
     for node in dbt_manifest.get("nodes", {}).values():
         if node.get("resource_type") != "model":
@@ -403,20 +403,23 @@ def extract_metrics_from_manifest(dbt_manifest, schema, model_name):
 
         node_name = node.get("alias") or node.get("name")
         if node.get("schema") == schema and node_name == model_name:
-            for m in node.get("metrics", []):
+            for m in node.get("meta", {}).get("metrics", []):
                 metrics.append({
                     "metric_name": m["name"],
                     "verbose_name": m.get("label") or m["name"],
-                    "expression": m.get("sql") or m.get("expression"),
+                    "expression": m.get("sql"),
                     "metric_type": m.get("type", "custom"),
-                    "description": m.get("description") or m.get("meta", {}).get("description", ""),
-                    "d3format": None,
+                    "description": m.get("description", ""),
+                    "d3format": m.get("d3format"),
                     "currency": None,
                     "warning_text": None,
                     "extra": json.dumps({
                         "certification": {
-                            "certified_by": "Équipe Tech",
-                            "details": "Cette métrique est la source de vérité."
+                            "certified_by": m.get("certified_by", "Équipe Tech"),
+                            "details": m.get(
+                                "certification_details",
+                                "Cette métrique est la source de vérité."
+                            ),
                         }
                     }),
                 })
