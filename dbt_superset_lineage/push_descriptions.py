@@ -1,4 +1,5 @@
 import json
+import uuid
 import logging
 import re
 import time
@@ -346,6 +347,82 @@ def put_descriptions_to_superset(superset, dataset, superset_pause_after_update)
         logging.info("Skipping PUT execute request as nothing would be updated.")
 
 
+def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_after_update=None):
+    logging.info(f"Pushing {len(new_metrics)} metrics to dataset {dataset_id}")
+
+    dataset = superset.request("GET", f"/dataset/{dataset_id}")["result"]
+
+    # Clean columns
+    for col in dataset["columns"]:
+        for k in ["changed_on", "created_on", "type_generic"]:
+            col.pop(k, None)
+
+    # Clean metrics
+    for m in dataset["metrics"]:
+        for k in ["changed_on", "created_on"]:
+            m.pop(k, None)
+
+    for m in new_metrics:
+        m.setdefault("uuid", str(uuid.uuid4()))
+        m.setdefault("d3format", None)
+        m.setdefault("warning_text", None)
+        m.setdefault("currency", None)
+        m.setdefault("extra", json.dumps({
+            "certification": {
+                "certified_by": "Équipe Tech",
+                "details": "Cette métrique est la source de vérité."
+            }
+        }))
+
+    dataset["metrics"].extend(new_metrics)
+
+    payload = {
+        "metrics": dataset["metrics"],
+        "columns": dataset["columns"],
+        "table_name": dataset["table_name"],
+        "schema": dataset["schema"],
+        "database_id": dataset["database"]["id"],
+        "is_sqllab_view": dataset.get("is_sqllab_view", False),
+        "is_managed_externally": dataset.get("is_managed_externally", False),
+        "offset": dataset.get("offset", 0),
+        "cache_timeout": dataset.get("cache_timeout"),
+        "normalize_columns": dataset.get("normalize_columns", True),
+        "owners": [owner["id"] for owner in dataset["owners"]],
+    }
+
+    superset.request("PUT", f"/dataset/{dataset_id}", json=payload)
+    pause_after_update(superset_pause_after_update)
+
+
+def extract_metrics_from_manifest(dbt_manifest, schema, model_name):
+    """Extract metrics for a specific model from dbt manifest."""
+    metrics = []
+    for node in dbt_manifest.get("nodes", {}).values():
+        if node.get("resource_type") != "model":
+            continue
+
+        node_name = node.get("alias") or node.get("name")
+        if node.get("schema") == schema and node_name == model_name:
+            for m in node.get("metrics", []):
+                metrics.append({
+                    "metric_name": m["name"],
+                    "verbose_name": m.get("label") or m["name"],
+                    "expression": m.get("sql") or m.get("expression"),
+                    "metric_type": m.get("type", "custom"),
+                    "description": m.get("description") or m.get("meta", {}).get("description", ""),
+                    "d3format": None,
+                    "currency": None,
+                    "warning_text": None,
+                    "extra": json.dumps({
+                        "certification": {
+                            "certified_by": "Équipe Tech",
+                            "details": "Cette métrique est la source de vérité."
+                        }
+                    }),
+                })
+    return metrics
+
+
 def main(manifest_source, dbt_db_name, dbt_schema_names,
          superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
          superset_access_token, superset_refresh_token,
@@ -365,9 +442,7 @@ def main(manifest_source, dbt_db_name, dbt_schema_names,
     sst_datasets = get_datasets_from_superset(superset, superset_db_id)
     logging.info("There are %d physical datasets in Superset overall.", len(sst_datasets))
 
-    # Load manifest from either local file or S3
     dbt_manifest = load_dbt_manifest(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region)
-
     dbt_tables = get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names)
 
     sst_datasets_dbt_filtered = [d for d in sst_datasets if d["key"] in dbt_tables]
@@ -376,7 +451,9 @@ def main(manifest_source, dbt_db_name, dbt_schema_names,
     for i, sst_dataset in enumerate(sst_datasets_dbt_filtered):
         logging.info("Processing dataset %d/%d.", i + 1, len(sst_datasets_dbt_filtered))
         sst_dataset_id = sst_dataset['id']
+        schema, model_name = sst_dataset['key'].split('.', 1)
         try:
+            # --- push descriptions and column labels from dbt manifest ---
             if superset_refresh_columns:
                 refresh_columns_in_superset(superset, sst_dataset_id)
                 pause_after_update(superset_pause_after_update)
@@ -384,8 +461,17 @@ def main(manifest_source, dbt_db_name, dbt_schema_names,
             sst_dataset_w_cols = add_superset_columns(superset, sst_dataset)
             sst_dataset_w_cols_new = merge_columns_info(sst_dataset_w_cols, dbt_tables)
             put_descriptions_to_superset(superset, sst_dataset_w_cols_new, superset_pause_after_update)
+
+            # --- build metrics from dbt manifest ---
+            new_metrics = extract_metrics_from_manifest(dbt_manifest, schema, model_name)
+            if new_metrics:
+                logging.info(f"Found {len(new_metrics)} metrics in dbt for {schema}.{model_name}")
+                push_metrics_via_dataset(superset, sst_dataset_id, new_metrics, superset_pause_after_update)
+            else:
+                logging.info(f"No metrics found in dbt for {schema}.{model_name}")
+
         except HTTPError as e:
-            logging.error("The dataset with ID=%d wasn't updated. Check the error below.",
-                          sst_dataset_id, exc_info=e)
+            logging.error(f"The dataset with ID={sst_dataset_id} wasn't updated.", exc_info=e)
 
     logging.info("All done!")
+
