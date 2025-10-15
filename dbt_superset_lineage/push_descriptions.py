@@ -383,6 +383,7 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
         if metric_name in existing_metrics_map:
             # preserve the UUID
             existing_metric = existing_metrics_map[metric_name]
+            new_metric["id"] = existing_metric["id"]
             if "uuid" in existing_metric:
                 new_metric["uuid"] = existing_metric["uuid"]
 
