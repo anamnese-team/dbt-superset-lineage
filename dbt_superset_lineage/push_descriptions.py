@@ -352,18 +352,32 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
 
     dataset = superset.request("GET", f"/dataset/{dataset_id}")["result"]
 
-    # Clean columns
+    # clean columns
     for col in dataset["columns"]:
         for k in ["changed_on", "created_on", "type_generic"]:
             col.pop(k, None)
 
-    # Clean metrics
+    # clean metrics
     for m in dataset["metrics"]:
         for k in ["changed_on", "created_on"]:
             m.pop(k, None)
 
+    # get existing metrics
+    existing_metrics_by_name = {m["metric_name"]: m for m in dataset["metrics"]}
+
+    merged_metrics = []
+    dbt_metric_names = {m["metric_name"] for m in new_metrics}
+
+    # prepare new metrics
     for m in new_metrics:
-        m.setdefault("uuid", str(uuid.uuid4()))
+        existing = existing_metrics_by_name.get(new_m["metric_name"])
+
+        # carry over existing UUID
+        if existing:
+            new_m["uuid"] = existing.get("uuid", str(uuid.uuid4()))
+        else:
+            new_m.setdefault("uuid", str(uuid.uuid4()))
+
         m.setdefault("d3format", None)
         m.setdefault("warning_text", None)
         m.setdefault("currency", None)
@@ -373,11 +387,15 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
                 "details": "Cette métrique est la source de vérité."
             }
         }))
+        merged_metrics.append(new_m)
 
-    dataset["metrics"].extend(new_metrics)
+    # keep Superset-only metrics
+    for metric_name, metric in existing_metrics_by_name.items():
+        if metric_name not in dbt_metric_names:
+            merged_metrics.append(metric)
 
     payload = {
-        "metrics": dataset["metrics"],
+        "metrics": merged_metrics,
         "columns": dataset["columns"],
         "table_name": dataset["table_name"],
         "schema": dataset["schema"],
