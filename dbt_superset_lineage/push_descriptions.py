@@ -370,13 +370,13 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
 
     # prepare new metrics
     for m in new_metrics:
-        existing = existing_metrics_by_name.get(new_m["metric_name"])
+        existing = existing_metrics_by_name.get(m["metric_name"])
 
         # carry over existing UUID
         if existing:
-            new_m["uuid"] = existing.get("uuid", str(uuid.uuid4()))
+            m["uuid"] = existing.get("uuid", str(uuid.uuid4()))
         else:
-            new_m.setdefault("uuid", str(uuid.uuid4()))
+            m.setdefault("uuid", str(uuid.uuid4()))
 
         m.setdefault("d3format", None)
         m.setdefault("warning_text", None)
@@ -387,7 +387,7 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
                 "details": "Cette métrique est la source de vérité."
             }
         }))
-        merged_metrics.append(new_m)
+        merged_metrics.append(m)
 
     # keep Superset-only metrics
     for metric_name, metric in existing_metrics_by_name.items():
