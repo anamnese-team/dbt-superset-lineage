@@ -362,22 +362,9 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
         for k in ["changed_on", "created_on"]:
             m.pop(k, None)
 
-    # get existing metrics
-    existing_metrics_by_name = {m["metric_name"]: m for m in dataset["metrics"]}
-
-    merged_metrics = []
-    dbt_metric_names = {m["metric_name"] for m in new_metrics}
-
     # prepare new metrics
     for m in new_metrics:
-        existing = existing_metrics_by_name.get(m["metric_name"])
-
-        # carry over existing UUID
-        if existing:
-            m["uuid"] = existing.get("uuid", str(uuid.uuid4()))
-        else:
-            m.setdefault("uuid", str(uuid.uuid4()))
-
+        m.setdefault("uuid", str(uuid.uuid4()))
         m.setdefault("d3format", None)
         m.setdefault("warning_text", None)
         m.setdefault("currency", None)
@@ -387,15 +374,28 @@ def push_metrics_via_dataset(superset, dataset_id, new_metrics, superset_pause_a
                 "details": "Cette métrique est la source de vérité."
             }
         }))
-        merged_metrics.append(m)
 
-    # keep Superset-only metrics
-    for metric_name, metric in existing_metrics_by_name.items():
-        if metric_name not in dbt_metric_names:
-            merged_metrics.append(metric)
+    # create a map of existing metrics by metric_name
+    existing_metrics_map = {m["metric_name"]: m for m in dataset["metrics"]}
+
+    for new_metric in new_metrics:
+        metric_name = new_metric["metric_name"]
+        if metric_name in existing_metrics_map:
+            # preserve the UUID
+            existing_metric = existing_metrics_map[metric_name]
+            if "uuid" in existing_metric:
+                new_metric["uuid"] = existing_metric["uuid"]
+
+            # replace the other fields
+            for i, m in enumerate(dataset["metrics"]):
+                if m["metric_name"] == metric_name:
+                    dataset["metrics"][i] = new_metric
+                    break
+        else:
+            dataset["metrics"].append(new_metric)
 
     payload = {
-        "metrics": merged_metrics,
+        "metrics": dataset["metrics"],
         "columns": dataset["columns"],
         "table_name": dataset["table_name"],
         "schema": dataset["schema"],
