@@ -15,6 +15,41 @@ from .superset_api import Superset
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 
+def _format_freshness_label(table):
+    """Extract a short freshness label from dbt manifest meta."""
+    meta = table.get('meta', {})
+    meta_freshness = meta.get('freshness')
+    if isinstance(meta_freshness, str):
+        return meta_freshness.strip()
+    return None
+
+
+def extract_certification_from_table(table):
+    """Build certification payload from dbt manifest table entry."""
+    meta = table.get('meta', {})
+    certified_by = meta.get('certified_by') or meta.get('owner')
+
+    certification_meta = meta.get('certification', {})
+    if isinstance(certification_meta, dict):
+        certified_by = certification_meta.get('certified_by', certified_by)
+    freshness_label = _format_freshness_label(table)
+    details = f"Freshness: {freshness_label}" if freshness_label else None
+
+    extra_detail = certification_meta.get('details') if isinstance(certification_meta, dict) else meta.get('certification_details')
+    if extra_detail and details:
+        details = f"{details} | {extra_detail}"
+    elif extra_detail:
+        details = extra_detail
+
+    if certified_by or details:
+        return {
+            'certified_by': certified_by or "Équipe Tech",
+            'details': details or "Cette table est la source de vérité."
+        }
+
+    return None
+
+
 def load_dbt_manifest(manifest_source, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1'):
     """
     Load dbt manifest from either local file or S3.
@@ -189,17 +224,27 @@ def get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names):
                         "This would result in incorrect matching between Superset and dbt. " \
                         "To fix this, remove duplicates or add the ``dbt_db_name`` argument."
 
-                    tables[table_key_short] = {'columns': columns, 'description': description}
+                    tables[table_key_short] = {
+                        'columns': columns,
+                        'description': description,
+                        'meta': table.get('meta', {}),
+                        'freshness': table.get('freshness')
+                    }
 
     assert tables, "Manifest is empty!"
 
     return tables
 
 
-def add_certifications_in_superset(superset, dataset_id):
-    logging.info("Refreshing columns in Superset.")
-    body = {"extra": "{\"certification\": \n  {\"certified_by\": \"Équipe Tech\", \n   \"details\": \"Cette table est la source de vérité.\" \n    \n  }\n}"}
-    superset.request('PUT', f'/dataset/{dataset_id}',json=body)
+def add_certifications_in_superset(superset, dataset_id, certification=None):
+    logging.info("Updating certification in Superset.")
+
+    certification_payload = certification or {
+        "certified_by": "Équipe Tech",
+        "details": "Cette table est la source de vérité."
+    }
+    body = {"extra": json.dumps({"certification": certification_payload})}
+    superset.request('PUT', f'/dataset/{dataset_id}', json=body)
 
 
 def refresh_columns_in_superset(superset, dataset_id):
@@ -479,7 +524,9 @@ def main(manifest_source, dbt_db_name, dbt_schema_names,
             if superset_refresh_columns:
                 refresh_columns_in_superset(superset, sst_dataset_id)
                 pause_after_update(superset_pause_after_update)
-            add_certifications_in_superset(superset, sst_dataset_id)
+            dbt_table = dbt_tables.get(sst_dataset['key'], {})
+            certification = extract_certification_from_table(dbt_table)
+            add_certifications_in_superset(superset, sst_dataset_id, certification)
             sst_dataset_w_cols = add_superset_columns(superset, sst_dataset)
             sst_dataset_w_cols_new = merge_columns_info(sst_dataset_w_cols, dbt_tables)
             put_descriptions_to_superset(superset, sst_dataset_w_cols_new, superset_pause_after_update)
@@ -496,4 +543,3 @@ def main(manifest_source, dbt_db_name, dbt_schema_names,
             logging.error(f"The dataset with ID={sst_dataset_id} wasn't updated.", exc_info=e)
 
     logging.info("All done!")
-
