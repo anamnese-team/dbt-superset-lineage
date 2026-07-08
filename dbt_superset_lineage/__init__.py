@@ -61,12 +61,14 @@ def push_descriptions(manifest_source: str = typer.Option('.', help="Local path 
                                                                  help="Refresh token to Superset API."),
                       aws_access_key_id: str = typer.Option(None, help="S3 access key ID to access manifest"),
                       aws_secret_access_key: str = typer.Option(None, help="S3 access key secret to access manifest"),
-                      aws_region: str = typer.Option(None, help="S3 bucket region")):
+                      aws_region: str = typer.Option(None, envvar="AWS_DEFAULT_REGION", help="S3 bucket region"),
+                      aws_endpoint_url: str = typer.Option(None, envvar="AWS_ENDPOINT_URL",
+                                                           help="S3-compatible endpoint URL")):
 
     push_descriptions_main(manifest_source, dbt_db_name, dbt_schema_names,
                            superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
                            superset_access_token, superset_refresh_token, aws_access_key_id, aws_secret_access_key,
-                           aws_region)
+                           aws_region, aws_endpoint_url)
 
 
 if __name__ == '__main__':

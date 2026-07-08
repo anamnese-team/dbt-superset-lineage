@@ -1,6 +1,7 @@
 import json
 import uuid
 import logging
+import os
 import re
 import time
 import boto3
@@ -50,7 +51,8 @@ def extract_certification_from_table(table):
     return None
 
 
-def load_dbt_manifest(manifest_source, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1'):
+def load_dbt_manifest(manifest_source, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1',
+                      aws_endpoint_url=None):
     """
     Load dbt manifest from either local file or S3.
 
@@ -59,13 +61,15 @@ def load_dbt_manifest(manifest_source, aws_access_key_id=None, aws_secret_access
         aws_access_key_id: AWS access key (optional if using IAM roles/environment variables)
         aws_secret_access_key: AWS secret key (optional if using IAM roles/environment variables)
         aws_region: AWS region (default: us-east-1)
+        aws_endpoint_url: S3-compatible endpoint URL (optional)
 
     Returns:
         dict: Parsed dbt manifest
     """
     if manifest_source.startswith('s3://'):
         logging.info(f"Loading dbt manifest from S3: {manifest_source}")
-        return load_manifest_from_s3(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region)
+        return load_manifest_from_s3(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region,
+                                     aws_endpoint_url)
     else:
         logging.info(f"Loading dbt manifest from local file: {manifest_source}")
         return load_manifest_from_file(manifest_source)
@@ -77,7 +81,8 @@ def load_manifest_from_file(manifest_path):
         return json.load(f)
 
 
-def load_manifest_from_s3(s3_uri, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1'):
+def load_manifest_from_s3(s3_uri, aws_access_key_id=None, aws_secret_access_key=None, aws_region='us-east-1',
+                          aws_endpoint_url=None):
     """
     Load manifest from S3.
 
@@ -86,6 +91,7 @@ def load_manifest_from_s3(s3_uri, aws_access_key_id=None, aws_secret_access_key=
         aws_access_key_id: AWS access key (optional)
         aws_secret_access_key: AWS secret key (optional)
         aws_region: AWS region
+        aws_endpoint_url: S3-compatible endpoint URL (optional)
 
     Returns:
         dict: Parsed manifest JSON
@@ -100,16 +106,23 @@ def load_manifest_from_s3(s3_uri, aws_access_key_id=None, aws_secret_access_key=
 
     try:
         # Initialize S3 client
+        endpoint_url = aws_endpoint_url or os.getenv('AWS_ENDPOINT_URL') or os.getenv('AWS_ENDPOINT_URL_S3')
+        region_name = aws_region or os.getenv('AWS_DEFAULT_REGION') or os.getenv('AWS_REGION')
+
+        client_kwargs = {}
+        if region_name:
+            client_kwargs['region_name'] = region_name
+        if endpoint_url:
+            client_kwargs['endpoint_url'] = endpoint_url
+
         if aws_access_key_id and aws_secret_access_key:
-            s3_client = boto3.client(
-                's3',
-                aws_access_key_id=aws_access_key_id,
-                aws_secret_access_key=aws_secret_access_key,
-                region_name=aws_region
-            )
-        else:
-            # Use default credential chain (IAM roles, environment variables, etc.)
-            s3_client = boto3.client('s3', region_name=aws_region)
+            client_kwargs.update({
+                'aws_access_key_id': aws_access_key_id,
+                'aws_secret_access_key': aws_secret_access_key,
+            })
+
+        # Use default credential chain (IAM roles, environment variables, etc.) when credentials are not provided.
+        s3_client = boto3.client('s3', **client_kwargs)
 
         logging.info(f"Downloading manifest from bucket: {bucket_name}, key: {object_key}")
 
@@ -493,7 +506,7 @@ def extract_metrics_from_manifest(dbt_manifest, schema, model_name):
 def main(manifest_source, dbt_db_name, dbt_schema_names,
          superset_url, superset_db_id, superset_refresh_columns, superset_pause_after_update,
          superset_access_token, superset_refresh_token,
-         aws_access_key_id=None, aws_secret_access_key=None, aws_region='eu-west-3'):
+         aws_access_key_id=None, aws_secret_access_key=None, aws_region='eu-west-3', aws_endpoint_url=None):
 
     # require at least one token for Superset
     assert superset_access_token is not None or superset_refresh_token is not None, \
@@ -509,7 +522,8 @@ def main(manifest_source, dbt_db_name, dbt_schema_names,
     sst_datasets = get_datasets_from_superset(superset, superset_db_id)
     logging.info("There are %d physical datasets in Superset overall.", len(sst_datasets))
 
-    dbt_manifest = load_dbt_manifest(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region)
+    dbt_manifest = load_dbt_manifest(manifest_source, aws_access_key_id, aws_secret_access_key, aws_region,
+                                     aws_endpoint_url)
     dbt_tables = get_tables_from_dbt(dbt_manifest, dbt_db_name, dbt_schema_names)
 
     sst_datasets_dbt_filtered = [d for d in sst_datasets if d["key"] in dbt_tables]

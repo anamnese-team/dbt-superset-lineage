@@ -92,6 +92,20 @@ $ dbt compile  # Compile project to create manifest.json
 $ export SUPERSET_ACCESS_TOKEN=<TOKEN>
 $ dbt-superset-lineage push-descriptions https://mysuperset.mycompany.com  # Push descrptions from dbt docs to Superset
 ```
+
+For S3-compatible providers such as OVHcloud, pass the manifest as an `s3://` URI and provide the endpoint URL:
+
+```console
+$ dbt-superset-lineage push-descriptions \
+    --manifest-source s3://anamnese-datalake/target/manifest.json \
+    --aws-endpoint-url https://s3.gra.io.cloud.ovh.net \
+    --aws-region gra \
+    https://mysuperset.mycompany.com
+```
+
+`AWS_ENDPOINT_URL` and `AWS_DEFAULT_REGION` are also read from the environment, so Airflow can provide them through
+secret-backed environment variables instead of CLI options.
+
 ![Column descriptions in Superset](assets/descriptions.png)
 
 ## License
